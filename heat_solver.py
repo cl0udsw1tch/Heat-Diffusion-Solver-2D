@@ -1,7 +1,5 @@
 import numpy as np
 from scipy.sparse import csc_matrix
-from scipy.sparse.linalg import  gmres, spilu, LinearOperator
-import math
 from typing import Tuple, List, Callable
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -125,10 +123,10 @@ class HeatSolver:
     
     def solve_problem(self) -> Tuple[np.ndarray, float]:
         
-        x, _ = solve(self._A, self._b)
+        x = solve(self._A, self._b)
         res = np.linalg.norm(self._b - self._A.dot(np.expand_dims(x, axis=1)))
         
-        self._x = x.reshape(res, res)[::-1]
+        self._x = x.reshape(self.n_rows, self.n_cols)[::-1]
         
         return x, res
     
@@ -157,8 +155,41 @@ class HeatSolver:
         plt.text(330, 180, '$T = 100$', ha='center', va='center', rotation=90, fontsize=12, weight='bold')  
         
         plt.savefig(name, dpi=300, bbox_inches="tight")
-        plt.show()
     
+    
+    def orderConv(self, r: float = 1, exact_res: float = 320, coarse_res: float = 80, fine_res: float = 160) -> float:
+
+        
+        exact_solver = HeatSolver(n_rows=exact_res, n_cols=exact_res, r=r)
+        coarse_solver = HeatSolver(n_rows=coarse_res, n_cols=coarse_res, r=r)
+        fine_solver = HeatSolver(n_rows=fine_res, n_cols=fine_res, r=r)
+        
+        exact_solver.construct_problem()
+        coarse_solver.construct_problem()
+        fine_solver.construct_problem()
+        
+        x_coarse, _ = coarse_solver.solve_problem()
+        x_fine, _ = fine_solver.solve_problem()
+        x_exact, _ = exact_solver.solve_problem()
+
+        linsp_coarse = np.linspace(0, 1, coarse_res)
+        linsp_fine = np.linspace(0, 1, fine_res)
+        linsp_exact = np.linspace(0, 1, exact_res)
+
+        x_coarse_interpolator = RectBivariateSpline(linsp_coarse, linsp_coarse, x_coarse.reshape(coarse_res, coarse_res))
+
+        x_coarse_interp = x_coarse_interpolator(linsp_exact, linsp_exact)
+
+        x_fine_interpolator = RectBivariateSpline(linsp_fine, linsp_fine, x_fine.reshape(fine_res, fine_res))
+
+        x_fine_interp = x_fine_interpolator(linsp_exact, linsp_exact)
+
+        err_coarse = np.linalg.norm(x_exact - x_coarse_interp.flatten()) / coarse_res
+        err_fine = np.linalg.norm(x_exact - x_fine_interp.flatten()) / fine_res
+
+        O = (np.log(np.abs(err_coarse / err_fine))) / (np.log((1 / coarse_res) / (1 / fine_res)))
+        
+        return O
     
     def set_arrays(self, a_W, a_E, a_S, a_N, S_P, S_U, n_cols, A_data, A_rows, A_cols, b, k, idx):
     
@@ -337,138 +368,104 @@ class HeatSolver:
         self.set_arrays(a_W, a_E, a_S, a_N, S_P, S_u, self.n_cols, self._A_data, self._A_rows, self._A_cols, self._b, k, idx)
         
         
-    def __get_displacement_x__(self, i, a_x, r, mid_i):
+    def __get_displacement_x__(self, i, a_x, mid_i):
         
         if i < mid_i:
-            return a_x * (1 - r**(i + 1)) / (1 - r)  
+            return a_x * (1 - self.r**(i + 1)) / (1 - self.r)  
         else:
-            lower_disp = self.__get_displacement_x__(mid_i-1, a_x, r, mid_i)
-            upper_disp = self.__get_dx_lower__(mid_i-1, a_x, r) * (1 - (1/r)**((i - mid_i) + 1)) / (1 - (1/r)) 
+            lower_disp = self.__get_displacement_x__(mid_i-1, a_x, mid_i)
+            upper_disp = self.__get_dx_lower__(mid_i-1, a_x, self.r) * (1 - (1/self.r)**((i - mid_i) + 1)) / (1 - (1/self.r)) 
             return lower_disp + upper_disp
         
         
-    def __get_displacement_y__(self, j, a_y, r, mid_j):
+    def __get_displacement_y__(self, j, a_y, mid_j):
         
         if j < mid_j:
-            return a_y * (1 - r**(j + 1)) / (1 - r)  
+            return a_y * (1 - self.r**(j + 1)) / (1 - self.r)  
         else:
-            lower_disp = self.__get_displacement_x__(mid_j-1, a_y, r, mid_j)
-            upper_disp = self.__get_dx_lower__(mid_j-1, a_y, r) * (1 - (1/r)**((j - mid_j) + 1)) / (1 - (1/r)) 
+            lower_disp = self.__get_displacement_x__(mid_j-1, a_y, mid_j)
+            upper_disp = self.__get_dx_lower__(mid_j-1, a_y, self.r) * (1 - (1/self.r)**((j - mid_j) + 1)) / (1 - (1/self.r)) 
             return lower_disp + upper_disp
         
         
-    def __get_dx_lower__(self, i, a_x, r):
-        return a_x * r**i
+    def __get_dx_lower__(self, i, a_x):
+        return a_x * self.r**i
         
         
-    def __get_dy_lower__(self, j, a_y, r):
-        return a_y * r**j
+    def __get_dy_lower__(self, j, a_y):
+        return a_y * self.r**j
         
         
-    def __get_dx_upper__(self, i, a_x, r, mid_i):
-        return a_x * r**(mid_i - 1) / (r**(i - mid_i))
+    def __get_dx_upper__(self, i, a_x, mid_i):
+        return a_x * self.r**(mid_i - 1) / (self.r**(i - mid_i))
         
         
-    def __get_dy_upper__(self, j, a_y, r, mid_j):
-        return a_y * r**(mid_j - 1) / (r**(j - mid_j))
+    def __get_dy_upper__(self, j, a_y, mid_j):
+        return a_y * self.r**(mid_j - 1) / (self.r**(j - mid_j))
         
         
-    def __get_dxdy__(self, i, j, a_x, a_y, r, mid):
+    def __get_dxdy__(self, i, j, a_x, a_y, mid):
         
         mid_i, mid_j = mid
         dx: float
         dy: float
         
         if i < mid[0]:
-            dx = self.__get_dx_lower__(i, a_x, r)
+            dx = self.__get_dx_lower__(i, a_x)
         else:
-            dx = self.__get_dx_upper__(i, a_x, r, mid_i)
+            dx = self.__get_dx_upper__(i, a_x, mid_i)
 
         if j < mid[1]:
-            dy = self.__get_dy_lower__(j, a_y, r)
+            dy = self.__get_dy_lower__(j, a_y)
         else:
-            dy = self.__get_dy_upper__(j, a_y, r, mid_j)
+            dy = self.__get_dy_upper__(j, a_y, mid_j)
             
         return dx, dy
             
             
-    def __i_after_lower__(self, a_x, r, x_f):
+    def __i_after_lower__(self, a_x, x_f):
         prefix_sum_i = 0
         i = 0
         while True:
-            prefix_sum_i += self.__get_dx_lower__(i, a_x, r)
+            prefix_sum_i += self.__get_dx_lower__(i, a_x)
             if prefix_sum_i > x_f:
                 return i
             i += 1
             
             
-    def __j_after_lower__(self, a_y, r, y_f):
+    def __j_after_lower__(self, a_y, y_f):
         prefix_sum_j = 0
         j = 0
         while True:
-            prefix_sum_j += self.__get_dy_lower__(j, a_y, r)
+            prefix_sum_j += self.__get_dy_lower__(j, a_y)
             if prefix_sum_j > y_f:
                 return j
             j += 1
             
             
-    def __i_after_upper__(self, a_x, r, x_f, mid_i):
+    def __i_after_upper__(self, a_x, x_f, mid_i):
         i = 0
         while True:
-            if self.__get_displacement_x__(i, a_x, r, mid_i) > x_f:
+            if self.__get_displacement_x__(i, a_x, mid_i) > x_f:
                 return i
             i += 1
             
-    def __j_after_upper__(self, a_y, r, y_f, mid_j):
+    def __j_after_upper__(self, a_y, y_f, mid_j):
         j = 0
         while True:
-            if self.__get_displacement_x__(j, a_y, r, mid_j) > y_f:
+            if self.__get_displacement_x__(j, a_y, mid_j) > y_f:
                 return j
             j += 1
         
         
-    def __ij_after_lower__(self, a_x, a_y, r, x_f, y_f):
-        return self.__i_after_lower__(a_x, r, x_f), self.__j_after_lower__(a_y, r, y_f)
+    def __ij_after_lower__(self, a_x, a_y, x_f, y_f):
+        return self.__i_after_lower__(a_x, x_f), self.__j_after_lower__(a_y, y_f)
 
 
-    def __ij_after_upper__(self, a_x, a_y, r, x_f, y_f, mid_i, mid_j):
-        return self.__i_after_upper__(a_x, r, x_f, mid_i), self.__j_after_upper__(a_y, r, y_f, mid_j)
+    def __ij_after_upper__(self, a_x, a_y, x_f, y_f, mid_i, mid_j):
+        return self.__i_after_upper__(a_x, x_f, mid_i), self.__j_after_upper__(a_y, y_f, mid_j)
     
     
-    def orderConv(r: float = 1, exact_res: float = 320, coarse_res: float = 80, fine_res: float = 160) -> float:
-        exact_res: int = 320
-        coarse_res: int = 80
-        fine_res: int = 160
-        
-        exact_solver = HeatSolver(n_rows=exact_res, n_cols=exact_res, r=r)
-        coarse_solver = HeatSolver(n_rows=coarse_res, n_cols=coarse_res, r=r)
-        fine_solver = HeatSolver(n_rows=fine_res, n_cols=fine_res, r=r)
-        
-        exact_solver.construct_problem()
-        coarse_solver.construct_problem()
-        fine_solver.construct_problem()
-        
-        x_coarse, _ = coarse_solver.solve_problem()
-        x_fine, _ = fine_solver.solve_problem()
-        x_exact, _ = exact_solver.solve_problem()
-
-        linsp_coarse = np.linspace(0, 1, coarse_res)
-        linsp_fine = np.linspace(0, 1, fine_res)
-        linsp_exact = np.linspace(0, 1, exact_res)
-
-        x_coarse_interpolator = RectBivariateSpline(linsp_coarse, linsp_coarse, x_coarse.reshape(coarse_res, coarse_res))
-
-        x_coarse_interp = x_coarse_interpolator(linsp_exact, linsp_exact)
-
-        x_fine_interpolator = RectBivariateSpline(linsp_fine, linsp_fine, x_fine.reshape(fine_res, fine_res))
-
-        x_fine_interp = x_fine_interpolator(linsp_exact, linsp_exact)
-
-        err_coarse = np.linalg.norm(x_exact - x_coarse_interp.flatten()) / coarse_res
-        err_fine = np.linalg.norm(x_exact - x_fine_interp.flatten()) / fine_res
-
-        O = (np.log(np.abs(err_coarse / err_fine))) / (np.log((1 / coarse_res) / (1 / fine_res)))
-        
-        return O
+    
 
     
