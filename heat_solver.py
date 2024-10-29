@@ -3,18 +3,12 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import  gmres, spilu, LinearOperator
 import math
 from typing import Tuple, List, Callable
-import sys
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.interpolate import RectBivariateSpline
-
 from linear_solver import solve
 
-np.set_printoptions(threshold=sys.maxsize)
-
-
 class HeatSolver:
-    
     
     L_x:        float=1,
     L_y:        float=1,

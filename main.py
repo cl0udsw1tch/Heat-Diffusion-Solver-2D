@@ -1,15 +1,6 @@
 
 import numpy as np
-from scipy.sparse import csc_matrix
-from scipy.sparse.linalg import  gmres, spilu, LinearOperator
-import math
-from typing import Tuple, List, Callable
 import sys
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.interpolate import RectBivariateSpline
-
-from linear_solver import solve
 from heat_solver import HeatSolver
 
 np.set_printoptions(threshold=sys.maxsize)
