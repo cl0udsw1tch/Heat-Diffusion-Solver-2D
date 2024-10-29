@@ -27,6 +27,8 @@ class HeatSolver:
     _b: np.ndarray
     _x: np.ndarray
     
+    error: float
+    
     
     def __init__(self, 
         L_x:        float=1,
@@ -59,6 +61,7 @@ class HeatSolver:
         self._A_cols = np.zeros((num_nonzero), dtype=np.int64)
 
         self._b = np.zeros((n_rows * n_cols, 1)).astype(np.float64)
+        
         
     
     def construct_problem(self):
@@ -126,6 +129,7 @@ class HeatSolver:
         x = solve(self._A, self._b)
         res = np.linalg.norm(self._b - self._A.dot(np.expand_dims(x, axis=1)))
         
+        self.error = res
         self._x = x.reshape(self.n_rows, self.n_cols)[::-1]
         
         return x, res
@@ -152,7 +156,10 @@ class HeatSolver:
         plt.text(-5, 180, '$T = 10$', ha='center', va='center', rotation=90, fontsize=12, weight='bold') 
         
         # RIGHT
-        plt.text(330, 180, '$T = 100$', ha='center', va='center', rotation=90, fontsize=12, weight='bold')  
+        plt.text(330, 180, '$T = 100$', ha='center', va='center', rotation=90, fontsize=12, weight='bold') 
+        
+         
+        plt.text(330, 360, f'$L^2 Residual = {np.round(self.error, 4)}$', ha='center', va='center', rotation=0, fontsize=8, weight='bold')  
         
         plt.savefig(name, dpi=300, bbox_inches="tight")
     

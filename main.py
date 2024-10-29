@@ -1,4 +1,5 @@
 
+from matplotlib.ticker import FormatStrFormatter, FuncFormatter
 import numpy as np
 import sys
 from heat_solver import HeatSolver
@@ -32,15 +33,19 @@ def main():
         print(f"r: {r}, order of convergence: {O}")
         y.append(O)
 
-    fig, ax = plt.subplots()
-    ax.plot(x, y, marker='o', linestyle='-', color='b')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x-1, y, marker='o', linestyle='-', color='b')
 
     ax.set_xlabel("Inflation r")
+    ax.set_xscale('log')
+    ax.set_xticks((x-1)[::-1])
+    ax.set_xticklabels([f"{x_}"[:8] for x_ in x[::1]])
+
     ax.set_ylabel("Order of convergence")
     
+    fig.savefig("order_of_convergence.png", dpi=600)
     plt.show()
     
-    fig.savefig("order_of_convergence.png")
 
     return 0
 
